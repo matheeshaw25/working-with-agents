@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
-from crewai import Agent, Task, Crew # Manages multi-agent collaboration.
-from litellm import completion # Lightweight wrapper for multiple LLM providers (including Google Gemini).
+from crewai import Agent, Task, Crew
+from litellm import completion
 
 # Load API Key
 load_dotenv()
@@ -14,26 +14,35 @@ if not API_KEY:
 # Set the environment variable for LiteLLM
 os.environ["GEMINI_API_KEY"] = API_KEY
 
-# Define the Question Handler Agent
+# ✅ Define the Question Handler Agent
 question_handler = Agent(
     role="Question Handler",
-    goal="Understand user queries and assign tasks.", #Understands user input and delegates work to another agent if needed
+    goal="Understand user queries and assign tasks.",
     backstory="A highly efficient AI designed to process user queries and delegate tasks.",
     verbose=True,
     allow_delegation=True,
-    llm="gemini/gemini-1.5-pro"  # Specify the model directly
+    llm="gemini/gemini-1.5-pro"
 )
 
-# Define the Researcher Agent
+# ✅ Define the Researcher Agent
 researcher = Agent(
     role="Researcher",
-    goal="Find relevant answers using Gemini AI.", #Focuses on retrieving answers from Gemini.
+    goal="Find relevant answers using Gemini AI.",
     backstory="An AI specialized in researching and providing accurate information to users.",
     verbose=True,
-    llm="gemini/gemini-1.5-pro"  # Specify the model directly
+    llm="gemini/gemini-1.5-pro"
 )
 
-# Define a Task for the Researcher
+# ✅ Define the Summarizer Agent
+summarizer = Agent(
+    role="Summarizer",
+    goal="Summarize long AI responses into a concise, well-structured format.",
+    backstory="A highly intelligent AI that specializes in summarizing complex information into easy-to-understand responses.",
+    verbose=True,
+    llm="gemini/gemini-1.5-pro"
+)
+
+# ✅ Define a Task for the Researcher
 def fetch_information(task_input):
     messages = [
         {"role": "user", "content": task_input}
@@ -43,7 +52,11 @@ def fetch_information(task_input):
         messages=messages,
         api_key=API_KEY  # Pass the API key directly
     )
-    return response['choices'][0]['message']['content']
+    long_text = response['choices'][0]['message']['content']
+
+    # ✅ Pass the response to the Summarizer before returning it
+    summarized_text = summarize_response(long_text)
+    return summarized_text
 
 research_task = Task(
     description="Find and summarize information about: {question}",
@@ -52,14 +65,33 @@ research_task = Task(
     expected_output="A well-structured summary of the topic with key details."
 )
 
-# Create a Crew (Multi-Agent System)
+# ✅ Define a Task for the Summarizer
+def summarize_response(task_input):
+    messages = [
+        {"role": "user", "content": f"Summarize the following information: {task_input}"}
+    ]
+    response = completion(
+        model="gemini/gemini-1.5-pro",
+        messages=messages,
+        api_key=API_KEY
+    )
+    return response['choices'][0]['message']['content']
+
+summary_task = Task(
+    description="Summarize long AI responses to improve readability.",
+    agent=summarizer,
+    function=summarize_response,
+    expected_output="A concise summary of the given text, retaining key details."
+)
+
+# ✅ Create a Crew (Multi-Agent System)
 crew = Crew(
-    agents=[question_handler, researcher],
-    tasks=[research_task],
+    agents=[question_handler, researcher, summarizer],  # ✅ Added Summarizer
+    tasks=[research_task, summary_task],  # ✅ Added Summarization Task
     verbose=True
 )
 
-# Run the multi-agent system
+# ✅ Run the multi-agent system
 if __name__ == "__main__":
     print("Multi-Agent AI System Ready! Type your question below.")
     while True:
